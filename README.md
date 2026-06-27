@@ -8,6 +8,21 @@ for clip durations and `ffmpeg` `xfade` filters for transitions.
 - Python 3.10 or newer
 - `ffmpeg` and `ffprobe` on your `PATH`
 
+## Install
+
+Run directly from a source checkout:
+
+```sh
+./finishvideo.py clip1.mp4 clip2.mp4 output.mp4
+```
+
+Or install it as a local command:
+
+```sh
+python3 -m pip install .
+finishvideo clip1.mp4 clip2.mp4 output.mp4
+```
+
 ## Usage
 
 Pass two or more input MP4 files followed by the output filename:
@@ -57,3 +72,18 @@ Options:
 
 The legacy Bash version is preserved at `legacy/finishvideo.sh`. The original
 `~/bin/finishvideo` file has not been deleted.
+
+
+## Development
+
+Run the unit tests without installing extra dependencies:
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+Check Python syntax:
+
+```sh
+python3 -m py_compile finishvideo.py src/finishvideo/cli.py tests/test_cli.py
+```

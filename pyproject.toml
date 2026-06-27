@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finishvideo"
+version = "0.1.0"
+description = "Join MP4 clips with ffmpeg xfade transitions."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Tom Ashby" }
+]
+license = { text = "MIT" }
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Multimedia :: Video",
+]
+
+[project.scripts]
+finishvideo = "finishvideo.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
