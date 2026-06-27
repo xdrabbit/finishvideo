@@ -45,6 +45,16 @@ def parse_args() -> argparse.Namespace:
         help="Beats per minute used with --beat-sync.",
     )
     parser.add_argument(
+        "--video-codec",
+        default="libx264",
+        help="ffmpeg video codec. Default: libx264",
+    )
+    parser.add_argument(
+        "--video-bitrate",
+        default="8000k",
+        help="ffmpeg video bitrate. Default: 8000k",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print inputs, durations, offsets, and ffmpeg command without rendering.",
@@ -163,6 +173,8 @@ def build_ffmpeg_command(
     output: Path,
     filter_complex: str,
     final_video: str,
+    video_codec: str = "libx264",
+    video_bitrate: str = "8000k",
 ) -> list[str]:
     command = ["ffmpeg", "-hide_banner", "-y"]
     for clip in clips:
@@ -176,9 +188,9 @@ def build_ffmpeg_command(
             "-pix_fmt",
             "yuv420p",
             "-c:v",
-            "hevc_videotoolbox",
+            video_codec,
             "-b:v",
-            "8000k",
+            video_bitrate,
             "-an",
             str(output),
         ]
@@ -258,6 +270,8 @@ def run() -> int:
         output,
         filter_complex,
         final_video,
+        args.video_codec,
+        args.video_bitrate,
     )
 
     if args.dry_run:

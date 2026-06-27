@@ -43,6 +43,12 @@ Set the transition duration:
 ./finishvideo.py --duration 0.75 clip1.mp4 clip2.mp4 output.mp4
 ```
 
+Use macOS hardware HEVC encoding when running on a Mac:
+
+```sh
+./finishvideo.py --video-codec hevc_videotoolbox --video-bitrate 8000k clip1.mp4 clip2.mp4 output.mp4
+```
+
 Round transition offsets to the nearest beat:
 
 ```sh
@@ -67,6 +73,8 @@ Options:
 - `--duration`: transition length in seconds. Defaults to `0.5`.
 - `--beat-sync`: round each transition offset to the nearest beat.
 - `--bpm`: beats per minute for `--beat-sync`.
+- `--video-codec`: ffmpeg video codec. Defaults to `libx264` for Linux and broad compatibility.
+- `--video-bitrate`: ffmpeg video bitrate. Defaults to `8000k`.
 - `--dry-run`: print input clips, durations, transition settings, computed
   offsets, and the ffmpeg command without running ffmpeg.
 

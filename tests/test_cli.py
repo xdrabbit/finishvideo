@@ -78,8 +78,22 @@ class FfmpegBuildTests(unittest.TestCase):
 
         self.assertEqual(command[:6], ["ffmpeg", "-hide_banner", "-y", "-i", "clip1.mp4", "-i"])
         self.assertIn("-filter_complex", command)
-        self.assertIn("hevc_videotoolbox", command)
+        self.assertIn("libx264", command)
+        self.assertIn("8000k", command)
         self.assertEqual(command[-1], "output.mp4")
+
+    def test_build_ffmpeg_command_accepts_custom_encoder(self) -> None:
+        command = build_ffmpeg_command(
+            [Path("clip1.mp4"), Path("clip2.mp4")],
+            Path("output.mp4"),
+            "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]",
+            "[v1]",
+            "hevc_videotoolbox",
+            "12000k",
+        )
+
+        self.assertIn("hevc_videotoolbox", command)
+        self.assertIn("12000k", command)
 
 
 if __name__ == "__main__":
