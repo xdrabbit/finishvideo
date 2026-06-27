@@ -18,6 +18,12 @@ class TransitionOffset:
     after_beat_sync: float
 
 
+@dataclass(frozen=True)
+class MusicTrack:
+    path: Path
+    duration: float
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="finishvideo",
@@ -43,6 +49,27 @@ def parse_args() -> argparse.Namespace:
         "--bpm",
         type=float,
         help="Beats per minute used with --beat-sync.",
+    )
+    parser.add_argument(
+        "--beat-offset",
+        type=float,
+        default=0.0,
+        help="Beat grid offset in seconds used with --beat-sync. Default: 0.",
+    )
+    parser.add_argument(
+        "--music",
+        type=Path,
+        help="Music/audio file to use for the rendered output.",
+    )
+    parser.add_argument(
+        "--music-audio",
+        choices=("replace", "mix"),
+        default="replace",
+        help=(
+            "How to combine --music with output audio. "
+            "replace maps only the music track; mix combines music with clip audio. "
+            "Default: replace"
+        ),
     )
     parser.add_argument(
         "--video-codec",
@@ -77,6 +104,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("--beat-sync requires --bpm")
     if args.bpm is not None and args.bpm <= 0:
         parser.error("--bpm must be greater than 0")
+    if args.beat_offset < 0:
+        parser.error("--beat-offset must be greater than or equal to 0")
+    if args.music_audio == "mix" and args.music is None:
+        parser.error("--music-audio mix requires --music")
 
     return args
 
@@ -109,9 +140,9 @@ def probe_duration(path: Path) -> float:
         raise SystemExit(f"error: could not read duration for {path}") from exc
 
 
-def rounded_to_beat(offset: float, bpm: float) -> float:
+def rounded_to_beat(offset: float, bpm: float, beat_offset: float = 0.0) -> float:
     beat = 60.0 / bpm
-    return round(offset / beat) * beat
+    return beat_offset + round((offset - beat_offset) / beat) * beat
 
 
 def ffmpeg_number(value: float) -> str:
@@ -123,6 +154,7 @@ def compute_transition_offsets(
     transition_duration: float,
     beat_sync: bool,
     bpm: float | None,
+    beat_offset: float = 0.0,
 ) -> list[TransitionOffset]:
     total_duration = durations[0]
     offsets: list[TransitionOffset] = []
@@ -132,7 +164,7 @@ def compute_transition_offsets(
         after_beat_sync = before_beat_sync
         if beat_sync:
             assert bpm is not None
-            after_beat_sync = rounded_to_beat(before_beat_sync, bpm)
+            after_beat_sync = rounded_to_beat(before_beat_sync, bpm, beat_offset)
 
         offsets.append(
             TransitionOffset(
@@ -175,10 +207,31 @@ def build_ffmpeg_command(
     final_video: str,
     video_codec: str = "libx264",
     video_bitrate: str = "8000k",
+    music: Path | None = None,
+    music_audio: str = "replace",
 ) -> list[str]:
     command = ["ffmpeg", "-hide_banner", "-y"]
     for clip in clips:
         command.extend(["-i", str(clip)])
+
+    final_audio: str | None = None
+    if music is not None:
+        music_index = len(clips)
+        command.extend(["-i", str(music)])
+        if music_audio == "replace":
+            final_audio = f"{music_index}:a:0"
+        elif music_audio == "mix":
+            clip_audio_inputs = "".join(f"[{index}:a]" for index in range(len(clips)))
+            audio_filter = (
+                f"{clip_audio_inputs}concat=n={len(clips)}:v=0:a=1[a_clips];"
+                f"[a_clips][{music_index}:a]"
+                "amix=inputs=2:duration=shortest:dropout_transition=0[aout]"
+            )
+            filter_complex = f"{filter_complex};{audio_filter}"
+            final_audio = "[aout]"
+        else:
+            raise ValueError(f"unsupported music audio mode: {music_audio}")
+
     command.extend(
         [
             "-filter_complex",
@@ -191,21 +244,28 @@ def build_ffmpeg_command(
             video_codec,
             "-b:v",
             video_bitrate,
-            "-an",
-            str(output),
         ]
     )
+    if final_audio is None:
+        command.append("-an")
+    else:
+        command.extend(["-map", final_audio, "-c:a", "aac", "-shortest"])
+
+    command.append(str(output))
     return command
 
 
 def print_dry_run(
     clips: list[Path],
     durations: list[float],
+    music_track: MusicTrack | None,
     transition: str,
     transition_duration: float,
     transition_offsets: list[TransitionOffset],
     beat_sync: bool,
     bpm: float | None,
+    beat_offset: float,
+    music_audio: str,
     command: list[str],
 ) -> None:
     print("Input clips:")
@@ -216,9 +276,21 @@ def print_dry_run(
     for clip, duration in zip(clips, durations):
         print(f"  {clip}: {ffmpeg_number(duration)}s")
 
+    print("\nMusic:")
+    if music_track is None:
+        print("  path: none")
+    else:
+        print(f"  path: {music_track.path}")
+        print(f"  duration: {ffmpeg_number(music_track.duration)}s")
+        print(f"  audio mode: {music_audio}")
+
     print("\nTransition:")
     print(f"  type: {transition}")
     print(f"  duration: {ffmpeg_number(transition_duration)}s")
+    print(f"  beat sync: {'on' if beat_sync else 'off'}")
+    if bpm is not None:
+        print(f"  bpm: {ffmpeg_number(bpm)}")
+    print(f"  beat offset: {ffmpeg_number(beat_offset)}s")
 
     print("\nTransition offsets before beat sync:")
     for item in transition_offsets:
@@ -229,7 +301,10 @@ def print_dry_run(
 
     if beat_sync:
         assert bpm is not None
-        print(f"\nTransition offsets after beat sync ({ffmpeg_number(bpm)} BPM):")
+        print(
+            "\nTransition offsets after beat sync "
+            f"({ffmpeg_number(bpm)} BPM, {ffmpeg_number(beat_offset)}s offset):"
+        )
         for item in transition_offsets:
             print(
                 f"  clip {item.index} -> clip {item.index + 1}: "
@@ -252,13 +327,19 @@ def run() -> int:
     missing = [str(path) for path in clips if not path.exists()]
     if missing:
         raise SystemExit("error: input file not found: " + ", ".join(missing))
+    if args.music is not None and not args.music.exists():
+        raise SystemExit(f"error: music file not found: {args.music}")
 
     durations = [probe_duration(clip) for clip in clips]
+    music_track = (
+        MusicTrack(args.music, probe_duration(args.music)) if args.music is not None else None
+    )
     transition_offsets = compute_transition_offsets(
         durations,
         args.duration,
         args.beat_sync,
         args.bpm,
+        args.beat_offset,
     )
     filter_complex, final_video = build_xfade_filter(
         transition_offsets,
@@ -272,17 +353,22 @@ def run() -> int:
         final_video,
         args.video_codec,
         args.video_bitrate,
+        args.music,
+        args.music_audio,
     )
 
     if args.dry_run:
         print_dry_run(
             clips,
             durations,
+            music_track,
             args.transition,
             args.duration,
             transition_offsets,
             args.beat_sync,
             args.bpm,
+            args.beat_offset,
+            args.music_audio,
             command,
         )
         return 0

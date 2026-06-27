@@ -55,6 +55,24 @@ Round transition offsets to the nearest beat:
 ./finishvideo.py --beat-sync --bpm 124 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
+Shift the beat grid before snapping transition offsets:
+
+```sh
+./finishvideo.py --beat-sync --bpm 124 --beat-offset 0.12 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
+```
+
+Use a music track as the final output audio:
+
+```sh
+./finishvideo.py --music song.mp3 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
+```
+
+Mix a music track with the original clip audio:
+
+```sh
+./finishvideo.py --music song.mp3 --music-audio mix clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
+```
+
 Preview the computed durations, offsets, and ffmpeg command without rendering:
 
 ```sh
@@ -64,7 +82,7 @@ Preview the computed durations, offsets, and ffmpeg command without rendering:
 Preview beat-synced offsets before rendering:
 
 ```sh
-./finishvideo.py --dry-run --beat-sync --bpm 124 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
+./finishvideo.py --dry-run --music song.mp3 --beat-sync --bpm 124 --beat-offset 0.12 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
 Options:
@@ -73,10 +91,22 @@ Options:
 - `--duration`: transition length in seconds. Defaults to `0.5`.
 - `--beat-sync`: round each transition offset to the nearest beat.
 - `--bpm`: beats per minute for `--beat-sync`.
+- `--beat-offset`: beat grid offset in seconds for `--beat-sync`. Defaults to `0`.
+- `--music`: music/audio file to use for final output audio.
+- `--music-audio`: how to combine `--music` with output audio. `replace` maps
+  only the music track, while `mix` combines the music with concatenated clip
+  audio. Defaults to `replace`.
 - `--video-codec`: ffmpeg video codec. Defaults to `libx264` for Linux and broad compatibility.
 - `--video-bitrate`: ffmpeg video bitrate. Defaults to `8000k`.
 - `--dry-run`: print input clips, durations, transition settings, computed
-  offsets, and the ffmpeg command without running ffmpeg.
+  offsets, music metadata, and the ffmpeg command without running ffmpeg.
+
+Notes:
+
+- Beat sync uses the explicit `--bpm` value and optional `--beat-offset`; it does
+  not perform automatic audio beat detection yet.
+- `--music-audio mix` expects every input clip to have an audio stream. Use the
+  default `--music-audio replace` for music-only output audio.
 
 The legacy Bash version is preserved at `legacy/finishvideo.sh`. The original
 `~/bin/finishvideo` file has not been deleted.

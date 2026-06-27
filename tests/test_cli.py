@@ -28,6 +28,10 @@ class BeatTests(unittest.TestCase):
         self.assertEqual(rounded_to_beat(1.01, 120), 1.0)
         self.assertEqual(rounded_to_beat(1.26, 120), 1.5)
 
+    def test_rounded_to_beat_with_offset(self) -> None:
+        self.assertEqual(rounded_to_beat(1.01, 120, 0.25), 1.25)
+        self.assertEqual(rounded_to_beat(1.49, 120, 0.25), 1.25)
+
 
 class OffsetTests(unittest.TestCase):
     def test_compute_transition_offsets_without_beat_sync(self) -> None:
@@ -48,6 +52,12 @@ class OffsetTests(unittest.TestCase):
         self.assertEqual(offsets[0].after_beat_sync, 9.5)
         self.assertEqual(offsets[1].before_beat_sync, 16.8)
         self.assertEqual(offsets[1].after_beat_sync, 17.0)
+
+    def test_compute_transition_offsets_with_beat_offset(self) -> None:
+        offsets = compute_transition_offsets([10.0, 8.0], 0.5, True, 120, 0.25)
+
+        self.assertEqual(offsets[0].before_beat_sync, 9.5)
+        self.assertEqual(offsets[0].after_beat_sync, 9.25)
 
 
 class FfmpegBuildTests(unittest.TestCase):
@@ -94,6 +104,38 @@ class FfmpegBuildTests(unittest.TestCase):
 
         self.assertIn("hevc_videotoolbox", command)
         self.assertIn("12000k", command)
+
+    def test_build_ffmpeg_command_with_music_replace(self) -> None:
+        command = build_ffmpeg_command(
+            [Path("clip1.mp4"), Path("clip2.mp4")],
+            Path("output.mp4"),
+            "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]",
+            "[v1]",
+            music=Path("song.mp3"),
+        )
+
+        self.assertIn("song.mp3", command)
+        self.assertIn("-map", command)
+        self.assertIn("2:a:0", command)
+        self.assertIn("-c:a", command)
+        self.assertIn("aac", command)
+        self.assertIn("-shortest", command)
+        self.assertNotIn("-an", command)
+
+    def test_build_ffmpeg_command_with_music_mix(self) -> None:
+        command = build_ffmpeg_command(
+            [Path("clip1.mp4"), Path("clip2.mp4")],
+            Path("output.mp4"),
+            "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]",
+            "[v1]",
+            music=Path("song.mp3"),
+            music_audio="mix",
+        )
+        filter_complex = command[command.index("-filter_complex") + 1]
+
+        self.assertIn("[0:a][1:a]concat=n=2:v=0:a=1[a_clips]", filter_complex)
+        self.assertIn("[a_clips][2:a]amix=inputs=2", filter_complex)
+        self.assertIn("[aout]", command)
 
 
 if __name__ == "__main__":
