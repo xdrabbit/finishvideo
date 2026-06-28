@@ -91,6 +91,12 @@ Analyze clips before rendering:
 ./finishvideo.py analyze clip1.mp4 clip2.mp4 clip3.mp4
 ```
 
+Analyze music metadata:
+
+```sh
+./finishvideo.py analyze-music song.mp3
+```
+
 Options:
 
 - `--transition`: ffmpeg `xfade` transition name. Defaults to `fade`.
@@ -111,6 +117,9 @@ Notes:
 - Beat sync currently snaps transition offsets to a manual BPM grid starting at
   time zero, plus optional `--beat-offset`; it does not perform automatic audio
   beat detection yet.
+- `analyze-music` reads audio stream and container metadata, including tags such
+  as `BPM`, `TBPM`, `tempo`, and `initialkey` when present. It does not detect
+  BPM automatically yet.
 - When `--music` is provided, the music replaces clip audio in the output. The
   render ends at the composed video duration, not at the music duration.
 
@@ -129,6 +138,12 @@ Inspect the generated clips:
 
 ```sh
 ./finishvideo.py analyze /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4
+```
+
+Inspect the generated music metadata:
+
+```sh
+./finishvideo.py analyze-music /tmp/finishvideo-smoke/music.m4a
 ```
 
 Preview the render command with music:

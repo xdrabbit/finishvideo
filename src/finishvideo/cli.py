@@ -9,7 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from finishvideo.formatting import print_analyze, print_dry_run
+from finishvideo.audio import probe_audio
+from finishvideo.formatting import print_analyze, print_analyze_music, print_dry_run
 from finishvideo.probe import MusicTrack, probe_duration, probe_media
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
@@ -22,11 +23,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     effective_argv = sys.argv[1:] if argv is None else argv
     if effective_argv and effective_argv[0] == "analyze":
         return parse_analyze_args(effective_argv[1:])
+    if effective_argv and effective_argv[0] == "analyze-music":
+        return parse_analyze_music_args(effective_argv[1:])
 
     parser = argparse.ArgumentParser(
         prog="finishvideo",
         description="Join MP4 clips with ffmpeg xfade transitions.",
-        epilog="Use 'finishvideo analyze clip1.mp4 clip2.mp4' to inspect sources.",
+        epilog=(
+            "Use 'finishvideo analyze clip1.mp4 clip2.mp4' to inspect sources, "
+            "or 'finishvideo analyze-music song.mp3' to inspect music metadata."
+        ),
     )
     parser.add_argument(
         "--transition",
@@ -133,6 +139,21 @@ def parse_analyze_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def parse_analyze_music_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="finishvideo analyze-music",
+        description="Inspect music/audio metadata for future beat-grid work.",
+    )
+    parser.add_argument(
+        "music",
+        type=Path,
+        help="Music/audio file to inspect.",
+    )
+    args = parser.parse_args(argv)
+    args.command = "analyze-music"
+    return args
+
+
 def require_tool(name: str) -> None:
     if shutil.which(name) is None:
         raise SystemExit(f"error: required tool not found on PATH: {name}")
@@ -150,10 +171,21 @@ def run_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_analyze_music(args: argparse.Namespace) -> int:
+    require_tool("ffprobe")
+    if not args.music.exists():
+        raise SystemExit(f"error: input file not found: {args.music}")
+
+    print_analyze_music(probe_audio(args.music))
+    return 0
+
+
 def run() -> int:
     args = parse_args()
     if args.command == "analyze":
         return run_analyze(args)
+    if args.command == "analyze-music":
+        return run_analyze_music(args)
 
     require_tool("ffprobe")
     if not args.dry_run:

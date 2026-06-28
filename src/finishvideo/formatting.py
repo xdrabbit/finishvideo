@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
+from finishvideo.audio import AudioInfo
 from finishvideo.probe import ClipInfo, MusicTrack
 from finishvideo.timeline import TransitionOffset, estimate_composed_duration
 
@@ -15,6 +16,10 @@ def ffmpeg_number(value: float) -> str:
 
 def format_optional(value: str | None) -> str:
     return value if value is not None else "unknown"
+
+
+def format_optional_int(value: int | None) -> str:
+    return str(value) if value is not None else "unknown"
 
 
 def print_dry_run(
@@ -101,3 +106,25 @@ def print_analyze(
     print(f"  total source duration: {ffmpeg_number(total_source_duration)}s")
     print(f"  transition duration: {ffmpeg_number(transition_duration)}s")
     print(f"  estimated composed duration: {ffmpeg_number(composed_duration)}s")
+
+
+def print_analyze_music(audio: AudioInfo) -> None:
+    print("Music:")
+    print(f"  path: {audio.path}")
+    print(f"  duration: {ffmpeg_number(audio.duration)}s")
+    print(f"  codec: {format_optional(audio.codec)}")
+    sample_rate = (
+        "unknown" if audio.sample_rate is None else f"{audio.sample_rate} Hz"
+    )
+    print(f"  sample rate: {sample_rate}")
+    print(f"  channels: {format_optional_int(audio.channels)}")
+    if audio.bitrate is not None:
+        print(f"  bitrate: {audio.bitrate} bps")
+
+    print("\nMetadata:")
+    if not audio.tags:
+        print("  none")
+        return
+
+    for key in sorted(audio.tags, key=str.casefold):
+        print(f"  {key}: {audio.tags[key]}")

@@ -8,7 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from finishvideo.formatting import ffmpeg_number, print_analyze
+from finishvideo.audio import AudioInfo, parse_audio_probe_json
+from finishvideo.formatting import ffmpeg_number, print_analyze, print_analyze_music
 from finishvideo.probe import ClipInfo, parse_fps, parse_probe_json
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
@@ -120,6 +121,92 @@ class AnalyzeTests(unittest.TestCase):
         self.assertIn("audio: no", text)
         self.assertIn("total source duration: 4s", text)
         self.assertIn("estimated composed duration: 3.5s", text)
+
+
+class AnalyzeMusicTests(unittest.TestCase):
+    def test_parse_audio_probe_json_reads_audio_metadata(self) -> None:
+        audio = parse_audio_probe_json(
+            Path("song.mp3"),
+            {
+                "format": {
+                    "duration": "12.500000",
+                    "bit_rate": "192000",
+                    "tags": {"title": "Demo", "BPM": "124"},
+                },
+                "streams": [
+                    {
+                        "codec_type": "audio",
+                        "codec_name": "mp3",
+                        "sample_rate": "44100",
+                        "channels": 2,
+                        "tags": {"TBPM": "124", "initialkey": "8A"},
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(audio.path, Path("song.mp3"))
+        self.assertEqual(audio.duration, 12.5)
+        self.assertEqual(audio.codec, "mp3")
+        self.assertEqual(audio.sample_rate, 44100)
+        self.assertEqual(audio.channels, 2)
+        self.assertEqual(audio.bitrate, 192000)
+        self.assertEqual(audio.tags["BPM"], "124")
+        self.assertEqual(audio.tags["TBPM"], "124")
+        self.assertEqual(audio.tags["initialkey"], "8A")
+
+    def test_parse_audio_probe_json_uses_stream_duration_and_bitrate_first(self) -> None:
+        audio = parse_audio_probe_json(
+            Path("song.m4a"),
+            {
+                "format": {"duration": "12.500000", "bit_rate": "128000"},
+                "streams": [
+                    {
+                        "codec_type": "audio",
+                        "duration": "10.000000",
+                        "bit_rate": "96000",
+                    },
+                ],
+            },
+        )
+
+        self.assertEqual(audio.duration, 10.0)
+        self.assertEqual(audio.bitrate, 96000)
+
+    def test_parse_audio_probe_json_errors_without_audio_stream(self) -> None:
+        with self.assertRaises(SystemExit) as error:
+            parse_audio_probe_json(
+                Path("clip.mp4"),
+                {"format": {"duration": "2.0"}, "streams": [{"codec_type": "video"}]},
+            )
+
+        self.assertIn("no audio stream found", str(error.exception))
+
+    def test_print_analyze_music_formats_metadata(self) -> None:
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_analyze_music(
+                AudioInfo(
+                    path=Path("song.mp3"),
+                    duration=12.5,
+                    codec="mp3",
+                    sample_rate=44100,
+                    channels=2,
+                    bitrate=192000,
+                    tags={"BPM": "124", "initialkey": "8A"},
+                )
+            )
+
+        text = output.getvalue()
+        self.assertIn("path: song.mp3", text)
+        self.assertIn("duration: 12.5s", text)
+        self.assertIn("codec: mp3", text)
+        self.assertIn("sample rate: 44100", text)
+        self.assertIn("channels: 2", text)
+        self.assertIn("bitrate: 192000", text)
+        self.assertIn("BPM: 124", text)
+        self.assertIn("initialkey: 8A", text)
 
 
 class FfmpegBuildTests(unittest.TestCase):
