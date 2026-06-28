@@ -37,4 +37,11 @@ ffmpeg -hide_banner -y \
   -c:a aac -b:a 128k \
   "$out_dir/music.m4a"
 
+ffmpeg -hide_banner -y \
+  -f lavfi -i "sine=frequency=220:sample_rate=48000:d=8" \
+  -c:a aac -b:a 128k \
+  -metadata BPM=120 \
+  -movflags use_metadata_tags \
+  "$out_dir/music_bpm120.m4a"
+
 echo "Created smoke fixtures in $out_dir"

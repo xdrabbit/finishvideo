@@ -177,6 +177,13 @@ Inspect the generated music metadata:
 ./finishvideo.py analyze-music /tmp/finishvideo-smoke/music.m4a
 ```
 
+Inspect the tagged music metadata:
+
+```sh
+ffprobe -v error -show_entries format_tags=BPM -of default=nw=1 /tmp/finishvideo-smoke/music_bpm120.m4a
+./finishvideo.py analyze-music /tmp/finishvideo-smoke/music_bpm120.m4a
+```
+
 Preview a generated beat grid:
 
 ```sh
@@ -189,10 +196,22 @@ Preview the render command with music:
 ./finishvideo.py --dry-run --music /tmp/finishvideo-smoke/music.m4a /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output.mp4
 ```
 
+Preview the metadata BPM render command:
+
+```sh
+./finishvideo.py --dry-run --music /tmp/finishvideo-smoke/music_bpm120.m4a --beat-sync --bpm metadata --beat-offset 0.1 /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output_metadata.mp4
+```
+
 Render a tiny output:
 
 ```sh
 ./finishvideo.py --music /tmp/finishvideo-smoke/music.m4a /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output.mp4
+```
+
+Render a tiny metadata BPM output:
+
+```sh
+./finishvideo.py --music /tmp/finishvideo-smoke/music_bpm120.m4a --beat-sync --bpm metadata --beat-offset 0.1 /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output_metadata.mp4
 ```
 
 Run unit tests:
