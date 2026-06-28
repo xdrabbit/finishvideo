@@ -1,15 +1,22 @@
 from pathlib import Path
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import sys
 import unittest
+from argparse import Namespace
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from finishvideo.audio import AudioInfo, extract_bpm_from_tags, parse_audio_probe_json
-from finishvideo.formatting import ffmpeg_number, print_analyze, print_analyze_music
+from finishvideo.cli import parse_args, resolve_bpm
+from finishvideo.formatting import (
+    ffmpeg_number,
+    print_analyze,
+    print_analyze_music,
+    print_dry_run,
+)
 from finishvideo.probe import ClipInfo, parse_fps, parse_probe_json
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
@@ -40,6 +47,98 @@ class BeatTests(unittest.TestCase):
 
     def test_build_beat_grid_with_offset(self) -> None:
         self.assertEqual(build_beat_grid(120, 4, 0.1), [0.1, 0.6, 1.1, 1.6])
+
+
+class RenderBpmTests(unittest.TestCase):
+    def test_numeric_bpm_still_parses(self) -> None:
+        args = parse_args(["--beat-sync", "--bpm", "124", "clip1.mp4", "clip2.mp4", "out.mp4"])
+
+        self.assertEqual(args.bpm, 124.0)
+
+    def test_metadata_bpm_parses_case_insensitively(self) -> None:
+        args = parse_args(
+            [
+                "--beat-sync",
+                "--bpm",
+                "Metadata",
+                "--music",
+                "song.mp3",
+                "clip1.mp4",
+                "clip2.mp4",
+                "out.mp4",
+            ]
+        )
+
+        self.assertEqual(args.bpm, "metadata")
+
+    def test_metadata_bpm_requires_music(self) -> None:
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as error:
+            parse_args(["--beat-sync", "--bpm", "metadata", "clip1.mp4", "clip2.mp4", "out.mp4"])
+
+        self.assertNotEqual(error.exception.code, 0)
+        self.assertIn("--bpm metadata requires --music", stderr.getvalue())
+
+    def test_metadata_bpm_resolves_from_audio_info(self) -> None:
+        resolution = resolve_bpm(
+            Namespace(beat_sync=True, bpm="metadata", music=Path("song.mp3")),
+            AudioInfo(
+                path=Path("song.mp3"),
+                duration=10.0,
+                codec="mp3",
+                sample_rate=44100,
+                channels=2,
+                bitrate=None,
+                tags={"BPM": "124"},
+                metadata_bpm=124.0,
+            ),
+        )
+
+        self.assertEqual(resolution.bpm, 124.0)
+        self.assertEqual(resolution.source, "metadata")
+
+    def test_missing_metadata_bpm_errors_clearly(self) -> None:
+        with self.assertRaises(SystemExit) as error:
+            resolve_bpm(
+                Namespace(beat_sync=True, bpm="metadata", music=Path("song.mp3")),
+                AudioInfo(
+                    path=Path("song.mp3"),
+                    duration=10.0,
+                    codec="mp3",
+                    sample_rate=44100,
+                    channels=2,
+                    bitrate=None,
+                    tags={},
+                    metadata_bpm=None,
+                ),
+            )
+
+        self.assertIn("usable metadata BPM", str(error.exception))
+        self.assertIn("missing, invalid, or ambiguous", str(error.exception))
+
+    def test_dry_run_includes_bpm_source_when_beat_sync_is_active(self) -> None:
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_dry_run(
+                [Path("clip1.mp4"), Path("clip2.mp4")],
+                [2.0, 2.0],
+                None,
+                "fade",
+                0.5,
+                [TransitionOffset(index=1, before_beat_sync=1.5, after_beat_sync=1.5)],
+                True,
+                120.0,
+                "metadata",
+                0.0,
+                1.0,
+                3.5,
+                ["ffmpeg", "-i", "clip1.mp4", "out.mp4"],
+            )
+
+        self.assertIn("bpm: 120", output.getvalue())
+        self.assertIn("bpm source: metadata", output.getvalue())
 
 
 class OffsetTests(unittest.TestCase):

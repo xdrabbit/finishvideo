@@ -55,6 +55,12 @@ Round transition offsets to the nearest beat:
 ./finishvideo.py --beat-sync --bpm 124 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
+Use a music file's metadata BPM tag for beat sync:
+
+```sh
+./finishvideo.py --beat-sync --bpm metadata --music song.mp3 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
+```
+
 Shift the beat grid before snapping transition offsets:
 
 ```sh
@@ -114,7 +120,8 @@ Options:
 - `--transition`: ffmpeg `xfade` transition name. Defaults to `fade`.
 - `--duration`: transition length in seconds. Defaults to `0.5`.
 - `--beat-sync`: round each transition offset to the nearest beat.
-- `--bpm`: beats per minute for `--beat-sync`.
+- `--bpm`: beats per minute for `--beat-sync`, or `metadata` to use a usable
+  BPM tag from `--music`.
 - `--beat-offset`: beat grid offset in seconds for `--beat-sync`. Defaults to `0`.
 - `--music`: music/audio file to use as the final output audio track.
 - `--music-volume`: music volume multiplier used with `--music`. Defaults to `1.0`;
@@ -132,10 +139,15 @@ Notes:
 - Beat sync currently snaps transition offsets to a manual BPM grid starting at
   time zero, plus optional `--beat-offset`; it does not perform automatic audio
   beat detection yet.
+- `--beat-sync --bpm metadata --music song.mp3` uses only simple music metadata
+  tags. It does not infer BPM from the waveform or detect onsets.
 - `analyze-music` reads audio stream and container metadata, including tags such
   as `BPM`, `TBPM`, `tempo`, and `initialkey` when present. It also reports a
   conservative metadata BPM from simple numeric `BPM`, `TBPM`, `tempo`, or
   `initialbpm` tag values when present.
+- Metadata BPM is useful as a known reference when the tag came from a trusted
+  source. If automatic BPM detection is added later, this gives a debuggable
+  ground truth to compare against when detection disagrees.
 - `analyze-music --beats` previews a lightweight beat grid from `--bpm`, or from
   metadata BPM when `--bpm` is omitted. This is only a timing preview. It is NOT
   automatic beat detection from waveform/audio.

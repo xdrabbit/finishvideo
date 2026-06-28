@@ -7,9 +7,10 @@ import argparse
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-from finishvideo.audio import probe_audio
+from finishvideo.audio import AudioInfo, probe_audio
 from finishvideo.formatting import print_analyze, print_analyze_music, print_dry_run
 from finishvideo.probe import MusicTrack, probe_duration, probe_media
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
@@ -18,6 +19,14 @@ from finishvideo.timeline import (
     compute_output_duration,
     compute_transition_offsets,
 )
+
+BPM_METADATA = "metadata"
+
+
+@dataclass(frozen=True)
+class BpmResolution:
+    bpm: float | None
+    source: str | None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -53,8 +62,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--bpm",
-        type=float,
-        help="Beats per minute used with --beat-sync.",
+        help="Beats per minute used with --beat-sync, or 'metadata' with --music.",
     )
     parser.add_argument(
         "--beat-offset",
@@ -105,14 +113,46 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--duration must be greater than 0")
     if args.beat_sync and args.bpm is None:
         parser.error("--beat-sync requires --bpm")
-    if args.bpm is not None and args.bpm <= 0:
-        parser.error("--bpm must be greater than 0")
+    if args.bpm is not None:
+        if args.bpm.casefold() == BPM_METADATA:
+            args.bpm = BPM_METADATA
+        else:
+            try:
+                args.bpm = float(args.bpm)
+            except ValueError:
+                parser.error("--bpm must be a positive number or metadata")
+            if args.bpm <= 0:
+                parser.error("--bpm must be greater than 0")
+    if args.bpm == BPM_METADATA and args.music is None:
+        parser.error("--bpm metadata requires --music")
     if args.beat_offset < 0:
         parser.error("--beat-offset must be greater than or equal to 0")
     if args.music_volume < 0:
         parser.error("--music-volume must be greater than or equal to 0")
 
     return args
+
+
+def resolve_bpm(
+    args: argparse.Namespace,
+    music_audio_info: AudioInfo | None = None,
+) -> BpmResolution:
+    if not args.beat_sync:
+        return BpmResolution(None, None)
+
+    if args.bpm == BPM_METADATA:
+        if args.music is None:
+            raise SystemExit("error: --bpm metadata requires --music")
+        if music_audio_info is None:
+            raise SystemExit("error: --bpm metadata requires music metadata")
+        if music_audio_info.metadata_bpm is None:
+            raise SystemExit(
+                "error: --bpm metadata requires a usable metadata BPM tag "
+                "on the music file (missing, invalid, or ambiguous)"
+            )
+        return BpmResolution(music_audio_info.metadata_bpm, BPM_METADATA)
+
+    return BpmResolution(args.bpm, "manual")
 
 
 def parse_analyze_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -237,14 +277,22 @@ def run() -> int:
         raise SystemExit(f"error: music file not found: {args.music}")
 
     durations = [probe_duration(clip) for clip in clips]
-    music_track = (
-        MusicTrack(args.music, probe_duration(args.music)) if args.music is not None else None
-    )
+    music_audio_info = None
+    if args.music is not None and args.beat_sync and args.bpm == BPM_METADATA:
+        music_audio_info = probe_audio(args.music)
+        music_track = MusicTrack(args.music, music_audio_info.duration)
+    else:
+        music_track = (
+            MusicTrack(args.music, probe_duration(args.music))
+            if args.music is not None
+            else None
+        )
+    bpm_resolution = resolve_bpm(args, music_audio_info)
     transition_offsets = compute_transition_offsets(
         durations,
         args.duration,
         args.beat_sync,
-        args.bpm,
+        bpm_resolution.bpm,
         args.beat_offset,
     )
     filter_complex, final_video = build_xfade_filter(
@@ -274,7 +322,8 @@ def run() -> int:
             args.duration,
             transition_offsets,
             args.beat_sync,
-            args.bpm,
+            bpm_resolution.bpm,
+            bpm_resolution.source,
             args.beat_offset,
             args.music_volume,
             output_duration,

@@ -31,6 +31,7 @@ def print_dry_run(
     transition_offsets: list[TransitionOffset],
     beat_sync: bool,
     bpm: float | None,
+    bpm_source: str | None,
     beat_offset: float,
     music_volume: float,
     output_duration: float,
@@ -59,6 +60,8 @@ def print_dry_run(
     print(f"  beat sync: {'on' if beat_sync else 'off'}")
     if bpm is not None:
         print(f"  bpm: {ffmpeg_number(bpm)}")
+    if bpm_source is not None:
+        print(f"  bpm source: {bpm_source}")
     print(f"  beat offset: {ffmpeg_number(beat_offset)}s")
     print(f"  output duration: {ffmpeg_number(output_duration)}s")
 
