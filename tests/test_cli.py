@@ -1,4 +1,6 @@
 from pathlib import Path
+from contextlib import redirect_stdout
+import io
 import sys
 import unittest
 
@@ -7,12 +9,17 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from finishvideo.cli import (
+    ClipInfo,
     TransitionOffset,
     build_ffmpeg_command,
     build_xfade_filter,
     compute_output_duration,
     compute_transition_offsets,
+    estimate_composed_duration,
     ffmpeg_number,
+    parse_fps,
+    parse_probe_json,
+    print_analyze,
     rounded_to_beat,
 )
 
@@ -64,6 +71,59 @@ class OffsetTests(unittest.TestCase):
         offsets = compute_transition_offsets([10.0, 8.0, 6.0], 0.5, False, None)
 
         self.assertEqual(compute_output_duration([10.0, 8.0, 6.0], offsets), 23.0)
+
+    def test_estimate_composed_duration_subtracts_transition_overlap(self) -> None:
+        self.assertEqual(estimate_composed_duration([2.0, 2.0, 2.0], 0.5), 5.0)
+
+
+class AnalyzeTests(unittest.TestCase):
+    def test_parse_fps_fraction(self) -> None:
+        self.assertAlmostEqual(parse_fps("30000/1001"), 29.97002997002997)
+        self.assertIsNone(parse_fps("0/0"))
+        self.assertIsNone(parse_fps("not-a-rate"))
+
+    def test_parse_probe_json_reads_video_and_audio_metadata(self) -> None:
+        clip = parse_probe_json(
+            Path("clip.mp4"),
+            {
+                "format": {"duration": "2.500000"},
+                "streams": [
+                    {
+                        "codec_type": "video",
+                        "width": 1920,
+                        "height": 1080,
+                        "avg_frame_rate": "30000/1001",
+                    },
+                    {"codec_type": "audio"},
+                ],
+            },
+        )
+
+        self.assertEqual(clip.path, Path("clip.mp4"))
+        self.assertEqual(clip.duration, 2.5)
+        self.assertEqual(clip.resolution, "1920x1080")
+        self.assertAlmostEqual(clip.fps, 29.97002997002997)
+        self.assertTrue(clip.has_audio)
+
+    def test_print_analyze_formats_summary(self) -> None:
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_analyze(
+                [
+                    ClipInfo(Path("clip1.mp4"), 2.0, "320x240", 30.0, True),
+                    ClipInfo(Path("clip2.mp4"), 2.0, None, None, False),
+                ],
+                0.5,
+            )
+
+        text = output.getvalue()
+        self.assertIn("path: clip1.mp4", text)
+        self.assertIn("resolution: 320x240", text)
+        self.assertIn("fps: 30 fps", text)
+        self.assertIn("audio: no", text)
+        self.assertIn("total source duration: 4s", text)
+        self.assertIn("estimated composed duration: 3.5s", text)
 
 
 class FfmpegBuildTests(unittest.TestCase):

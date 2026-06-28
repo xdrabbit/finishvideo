@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,10 +26,24 @@ class MusicTrack:
     duration: float
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass(frozen=True)
+class ClipInfo:
+    path: Path
+    duration: float
+    resolution: str | None
+    fps: float | None
+    has_audio: bool
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    effective_argv = sys.argv[1:] if argv is None else argv
+    if effective_argv and effective_argv[0] == "analyze":
+        return parse_analyze_args(effective_argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="finishvideo",
         description="Join MP4 clips with ffmpeg xfade transitions.",
+        epilog="Use 'finishvideo analyze clip1.mp4 clip2.mp4' to inspect sources.",
     )
     parser.add_argument(
         "--transition",
@@ -87,7 +103,8 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         help="Input MP4 clips followed by the output MP4 filename.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(effective_argv)
+    args.command = "render"
 
     if len(args.paths) < 3:
         parser.error(
@@ -108,9 +125,115 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def parse_analyze_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="finishvideo analyze",
+        description="Inspect source media and estimate composed duration.",
+    )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0.5,
+        help="Transition duration used for composed duration estimate. Default: 0.5",
+    )
+    parser.add_argument(
+        "clips",
+        nargs="+",
+        help="Input media files to inspect.",
+    )
+    args = parser.parse_args(argv)
+    args.command = "analyze"
+
+    if args.duration <= 0:
+        parser.error("--duration must be greater than 0")
+
+    return args
+
+
 def require_tool(name: str) -> None:
     if shutil.which(name) is None:
         raise SystemExit(f"error: required tool not found on PATH: {name}")
+
+
+def parse_fps(value: str | None) -> float | None:
+    if not value or value == "0/0":
+        return None
+    if "/" in value:
+        numerator, denominator = value.split("/", 1)
+        try:
+            denominator_float = float(denominator)
+            if denominator_float == 0:
+                return None
+            return float(numerator) / denominator_float
+        except ValueError:
+            return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def parse_probe_json(path: Path, payload: dict) -> ClipInfo:
+    format_data = payload.get("format", {})
+    streams = payload.get("streams", [])
+
+    try:
+        duration = float(format_data["duration"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(f"error: could not read duration for {path}") from exc
+
+    video_stream = next(
+        (stream for stream in streams if stream.get("codec_type") == "video"),
+        None,
+    )
+    audio_stream = next(
+        (stream for stream in streams if stream.get("codec_type") == "audio"),
+        None,
+    )
+
+    resolution: str | None = None
+    fps: float | None = None
+    if video_stream is not None:
+        width = video_stream.get("width")
+        height = video_stream.get("height")
+        if width and height:
+            resolution = f"{width}x{height}"
+        fps = parse_fps(video_stream.get("avg_frame_rate")) or parse_fps(
+            video_stream.get("r_frame_rate")
+        )
+
+    return ClipInfo(
+        path=path,
+        duration=duration,
+        resolution=resolution,
+        fps=fps,
+        has_audio=audio_stream is not None,
+    )
+
+
+def probe_media(path: Path) -> ClipInfo:
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_format",
+            "-show_streams",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"error: could not parse ffprobe output for {path}") from exc
+
+    return parse_probe_json(path, payload)
 
 
 def probe_duration(path: Path) -> float:
@@ -181,6 +304,14 @@ def compute_output_duration(
     if not transition_offsets:
         return durations[0]
     return transition_offsets[-1].after_beat_sync + durations[-1]
+
+
+def estimate_composed_duration(
+    durations: list[float],
+    transition_duration: float,
+) -> float:
+    offsets = compute_transition_offsets(durations, transition_duration, False, None)
+    return compute_output_duration(durations, offsets)
 
 
 def build_xfade_filter(
@@ -318,8 +449,50 @@ def print_dry_run(
     print(f"  {shlex.join(command)}")
 
 
+def format_optional(value: str | None) -> str:
+    return value if value is not None else "unknown"
+
+
+def print_analyze(
+    clips: list[ClipInfo],
+    transition_duration: float,
+) -> None:
+    print("Source clips:")
+    for index, clip in enumerate(clips, start=1):
+        print(f"  {index}. path: {clip.path}")
+        print(f"     duration: {ffmpeg_number(clip.duration)}s")
+        print(f"     resolution: {format_optional(clip.resolution)}")
+        fps = "unknown" if clip.fps is None else f"{ffmpeg_number(clip.fps)} fps"
+        print(f"     fps: {fps}")
+        print(f"     audio: {'yes' if clip.has_audio else 'no'}")
+
+    durations = [clip.duration for clip in clips]
+    total_source_duration = sum(durations)
+    composed_duration = estimate_composed_duration(durations, transition_duration)
+
+    print("\nSummary:")
+    print(f"  total source duration: {ffmpeg_number(total_source_duration)}s")
+    print(f"  transition duration: {ffmpeg_number(transition_duration)}s")
+    print(f"  estimated composed duration: {ffmpeg_number(composed_duration)}s")
+
+
+def run_analyze(args: argparse.Namespace) -> int:
+    require_tool("ffprobe")
+    clips = [Path(path) for path in args.clips]
+
+    missing = [str(path) for path in clips if not path.exists()]
+    if missing:
+        raise SystemExit("error: input file not found: " + ", ".join(missing))
+
+    print_analyze([probe_media(clip) for clip in clips], args.duration)
+    return 0
+
+
 def run() -> int:
     args = parse_args()
+    if args.command == "analyze":
+        return run_analyze(args)
+
     require_tool("ffprobe")
     if not args.dry_run:
         require_tool("ffmpeg")

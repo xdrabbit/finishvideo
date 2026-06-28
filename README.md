@@ -85,6 +85,12 @@ Preview beat-synced offsets before rendering:
 ./finishvideo.py --dry-run --music song.mp3 --beat-sync --bpm 124 --beat-offset 0.12 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
+Analyze clips before rendering:
+
+```sh
+./finishvideo.py analyze clip1.mp4 clip2.mp4 clip3.mp4
+```
+
 Options:
 
 - `--transition`: ffmpeg `xfade` transition name. Defaults to `fade`.
@@ -110,6 +116,38 @@ Notes:
 
 The legacy Bash version is preserved at `legacy/finishvideo.sh`. The original
 `~/bin/finishvideo` file has not been deleted.
+
+## Quick smoke test
+
+Create tiny local fixtures:
+
+```sh
+scripts/make_smoke_fixtures.sh /tmp/finishvideo-smoke
+```
+
+Inspect the generated clips:
+
+```sh
+./finishvideo.py analyze /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4
+```
+
+Preview the render command with music:
+
+```sh
+./finishvideo.py --dry-run --music /tmp/finishvideo-smoke/music.m4a /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output.mp4
+```
+
+Render a tiny output:
+
+```sh
+./finishvideo.py --music /tmp/finishvideo-smoke/music.m4a /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output.mp4
+```
+
+Run unit tests:
+
+```sh
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
 
 
 ## Development
