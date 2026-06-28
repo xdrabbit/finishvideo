@@ -161,5 +161,5 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 Check Python syntax:
 
 ```sh
-python3 -m py_compile finishvideo.py src/finishvideo/cli.py tests/test_cli.py
+python3 -m py_compile finishvideo.py src/finishvideo/*.py tests/test_cli.py
 ```

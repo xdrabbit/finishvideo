@@ -8,18 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from finishvideo.cli import (
-    ClipInfo,
+from finishvideo.formatting import ffmpeg_number, print_analyze
+from finishvideo.probe import ClipInfo, parse_fps, parse_probe_json
+from finishvideo.render import build_ffmpeg_command, build_xfade_filter
+from finishvideo.timeline import (
     TransitionOffset,
-    build_ffmpeg_command,
-    build_xfade_filter,
     compute_output_duration,
     compute_transition_offsets,
     estimate_composed_duration,
-    ffmpeg_number,
-    parse_fps,
-    parse_probe_json,
-    print_analyze,
     rounded_to_beat,
 )
 
