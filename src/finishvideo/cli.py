@@ -7,26 +7,13 @@ import argparse
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
-from finishvideo.audio import AudioInfo, probe_audio
 from finishvideo.formatting import print_analyze, print_analyze_music, print_dry_run
-from finishvideo.probe import MusicTrack, probe_duration, probe_media
-from finishvideo.render import build_ffmpeg_command, build_xfade_filter
-from finishvideo.timeline import (
-    build_beat_grid,
-    compute_output_duration,
-    compute_transition_offsets,
-)
-
-BPM_METADATA = "metadata"
-
-
-@dataclass(frozen=True)
-class BpmResolution:
-    bpm: float | None
-    source: str | None
+from finishvideo.audio import probe_audio
+from finishvideo.plan import BPM_METADATA, build_render_plan
+from finishvideo.probe import probe_media
+from finishvideo.timeline import build_beat_grid
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -131,28 +118,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--music-volume must be greater than or equal to 0")
 
     return args
-
-
-def resolve_bpm(
-    args: argparse.Namespace,
-    music_audio_info: AudioInfo | None = None,
-) -> BpmResolution:
-    if not args.beat_sync:
-        return BpmResolution(None, None)
-
-    if args.bpm == BPM_METADATA:
-        if args.music is None:
-            raise SystemExit("error: --bpm metadata requires --music")
-        if music_audio_info is None:
-            raise SystemExit("error: --bpm metadata requires music metadata")
-        if music_audio_info.metadata_bpm is None:
-            raise SystemExit(
-                "error: --bpm metadata requires a usable metadata BPM tag "
-                "on the music file (missing, invalid, or ambiguous)"
-            )
-        return BpmResolution(music_audio_info.metadata_bpm, BPM_METADATA)
-
-    return BpmResolution(args.bpm, "manual")
 
 
 def parse_analyze_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -276,63 +241,28 @@ def run() -> int:
     if args.music is not None and not args.music.exists():
         raise SystemExit(f"error: music file not found: {args.music}")
 
-    durations = [probe_duration(clip) for clip in clips]
-    music_audio_info = None
-    if args.music is not None and args.beat_sync and args.bpm == BPM_METADATA:
-        music_audio_info = probe_audio(args.music)
-        music_track = MusicTrack(args.music, music_audio_info.duration)
-    else:
-        music_track = (
-            MusicTrack(args.music, probe_duration(args.music))
-            if args.music is not None
-            else None
-        )
-    bpm_resolution = resolve_bpm(args, music_audio_info)
-    transition_offsets = compute_transition_offsets(
-        durations,
-        args.duration,
-        args.beat_sync,
-        bpm_resolution.bpm,
-        args.beat_offset,
-    )
-    filter_complex, final_video = build_xfade_filter(
-        transition_offsets,
-        args.transition,
-        args.duration,
-    )
-    output_duration = compute_output_duration(durations, transition_offsets)
-    command = build_ffmpeg_command(
-        clips,
-        output,
-        filter_complex,
-        final_video,
-        args.video_codec,
-        args.video_bitrate,
-        args.music,
-        args.music_volume,
-        output_duration,
-    )
+    plan = build_render_plan(args, clips, output)
 
     if args.dry_run:
         print_dry_run(
-            clips,
-            durations,
-            music_track,
-            args.transition,
-            args.duration,
-            transition_offsets,
-            args.beat_sync,
-            bpm_resolution.bpm,
-            bpm_resolution.source,
-            args.beat_offset,
-            args.music_volume,
-            output_duration,
-            command,
+            plan.clips,
+            plan.durations,
+            plan.music_track,
+            plan.transition,
+            plan.transition_duration,
+            plan.transition_offsets,
+            plan.beat_sync,
+            plan.bpm,
+            plan.bpm_source,
+            plan.beat_offset,
+            plan.music_volume,
+            plan.output_duration,
+            plan.command,
         )
         return 0
 
-    subprocess.run(command, check=True)
-    print(f"Created {output}")
+    subprocess.run(plan.command, check=True)
+    print(f"Created {plan.output}")
     return 0
 
 

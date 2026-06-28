@@ -4,19 +4,21 @@ import io
 import sys
 import unittest
 from argparse import Namespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from finishvideo.audio import AudioInfo, extract_bpm_from_tags, parse_audio_probe_json
-from finishvideo.cli import parse_args, resolve_bpm
+from finishvideo.cli import parse_args
 from finishvideo.formatting import (
     ffmpeg_number,
     print_analyze,
     print_analyze_music,
     print_dry_run,
 )
+from finishvideo.plan import build_render_plan, resolve_bpm
 from finishvideo.probe import ClipInfo, parse_fps, parse_probe_json
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
@@ -439,6 +441,39 @@ class FfmpegBuildTests(unittest.TestCase):
 
         self.assertIn("-an", command)
         self.assertNotIn("-c:a", command)
+
+
+class RenderPlanTests(unittest.TestCase):
+    def test_build_render_plan_collects_render_intent(self) -> None:
+        args = Namespace(
+            music=None,
+            beat_sync=True,
+            bpm=120.0,
+            duration=0.5,
+            transition="fade",
+            beat_offset=0.0,
+            video_codec="libx264",
+            video_bitrate="8000k",
+            music_volume=1.0,
+        )
+
+        durations = {Path("clip1.mp4"): 2.0, Path("clip2.mp4"): 2.0}
+
+        with patch("finishvideo.plan.probe_duration", side_effect=durations.__getitem__):
+            plan = build_render_plan(
+                args,
+                [Path("clip1.mp4"), Path("clip2.mp4")],
+                Path("out.mp4"),
+            )
+
+        self.assertEqual(plan.clips, [Path("clip1.mp4"), Path("clip2.mp4")])
+        self.assertEqual(plan.output, Path("out.mp4"))
+        self.assertEqual(plan.durations, [2.0, 2.0])
+        self.assertEqual(plan.bpm, 120.0)
+        self.assertEqual(plan.bpm_source, "manual")
+        self.assertEqual(plan.output_duration, 3.5)
+        self.assertEqual(plan.final_video, "[v1]")
+        self.assertEqual(plan.command[-1], "out.mp4")
 
 
 if __name__ == "__main__":
