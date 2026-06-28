@@ -17,6 +17,11 @@ def rounded_to_beat(offset: float, bpm: float, beat_offset: float = 0.0) -> floa
     return beat_offset + round((offset - beat_offset) / beat) * beat
 
 
+def build_beat_grid(bpm: float, count: int, offset: float = 0.0) -> list[float]:
+    beat = 60.0 / bpm
+    return [offset + beat * index for index in range(count)]
+
+
 def compute_transition_offsets(
     durations: list[float],
     transition_duration: float,

@@ -97,6 +97,18 @@ Analyze music metadata:
 ./finishvideo.py analyze-music song.mp3
 ```
 
+Preview a beat grid from a known BPM without rendering:
+
+```sh
+./finishvideo.py analyze-music song.mp3 --bpm 124 --beats 16
+```
+
+Shift the preview beat grid:
+
+```sh
+./finishvideo.py analyze-music song.mp3 --bpm 124 --beats 16 --beat-offset 0.12
+```
+
 Options:
 
 - `--transition`: ffmpeg `xfade` transition name. Defaults to `fade`.
@@ -111,6 +123,9 @@ Options:
 - `--video-bitrate`: ffmpeg video bitrate. Defaults to `8000k`.
 - `--dry-run`: print input clips, durations, transition settings, computed
   offsets, music metadata, and the ffmpeg command without running ffmpeg.
+- `analyze-music --bpm`: BPM used for beat-grid preview.
+- `analyze-music --beats`: number of beat timestamps to preview.
+- `analyze-music --beat-offset`: beat grid offset in seconds for preview.
 
 Notes:
 
@@ -118,8 +133,12 @@ Notes:
   time zero, plus optional `--beat-offset`; it does not perform automatic audio
   beat detection yet.
 - `analyze-music` reads audio stream and container metadata, including tags such
-  as `BPM`, `TBPM`, `tempo`, and `initialkey` when present. It does not detect
-  BPM automatically yet.
+  as `BPM`, `TBPM`, `tempo`, and `initialkey` when present. It also reports a
+  conservative metadata BPM from simple numeric `BPM`, `TBPM`, `tempo`, or
+  `initialbpm` tag values when present.
+- `analyze-music --beats` previews a lightweight beat grid from `--bpm`, or from
+  metadata BPM when `--bpm` is omitted. This is only a timing preview. It is NOT
+  automatic beat detection from waveform/audio.
 - When `--music` is provided, the music replaces clip audio in the output. The
   render ends at the composed video duration, not at the music duration.
 
@@ -144,6 +163,12 @@ Inspect the generated music metadata:
 
 ```sh
 ./finishvideo.py analyze-music /tmp/finishvideo-smoke/music.m4a
+```
+
+Preview a generated beat grid:
+
+```sh
+./finishvideo.py analyze-music /tmp/finishvideo-smoke/music.m4a --bpm 120 --beats 8 --beat-offset 0.1
 ```
 
 Preview the render command with music:

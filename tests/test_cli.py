@@ -8,12 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from finishvideo.audio import AudioInfo, parse_audio_probe_json
+from finishvideo.audio import AudioInfo, extract_bpm_from_tags, parse_audio_probe_json
 from finishvideo.formatting import ffmpeg_number, print_analyze, print_analyze_music
 from finishvideo.probe import ClipInfo, parse_fps, parse_probe_json
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
     TransitionOffset,
+    build_beat_grid,
     compute_output_duration,
     compute_transition_offsets,
     estimate_composed_duration,
@@ -36,6 +37,9 @@ class BeatTests(unittest.TestCase):
     def test_rounded_to_beat_with_offset(self) -> None:
         self.assertEqual(rounded_to_beat(1.01, 120, 0.25), 1.25)
         self.assertEqual(rounded_to_beat(1.49, 120, 0.25), 1.25)
+
+    def test_build_beat_grid_with_offset(self) -> None:
+        self.assertEqual(build_beat_grid(120, 4, 0.1), [0.1, 0.6, 1.1, 1.6])
 
 
 class OffsetTests(unittest.TestCase):
@@ -124,6 +128,21 @@ class AnalyzeTests(unittest.TestCase):
 
 
 class AnalyzeMusicTests(unittest.TestCase):
+    def test_extract_bpm_from_tags_reads_common_spellings(self) -> None:
+        self.assertEqual(extract_bpm_from_tags({"BPM": "124"}), 124.0)
+        self.assertEqual(extract_bpm_from_tags({"TBPM": "124.0"}), 124.0)
+        self.assertEqual(extract_bpm_from_tags({"tempo": "124 BPM"}), 124.0)
+        self.assertEqual(extract_bpm_from_tags({"initialbpm": "124"}), 124.0)
+        self.assertEqual(extract_bpm_from_tags({"bpm": "124"}), 124.0)
+
+    def test_extract_bpm_from_tags_rejects_invalid_or_ambiguous_values(self) -> None:
+        self.assertIsNone(extract_bpm_from_tags({}))
+        self.assertIsNone(extract_bpm_from_tags({"BPM": "0"}))
+        self.assertIsNone(extract_bpm_from_tags({"BPM": "-124"}))
+        self.assertIsNone(extract_bpm_from_tags({"BPM": "124-126"}))
+        self.assertIsNone(extract_bpm_from_tags({"BPM": "124/125"}))
+        self.assertIsNone(extract_bpm_from_tags({"BPM": "124", "TBPM": "125"}))
+
     def test_parse_audio_probe_json_reads_audio_metadata(self) -> None:
         audio = parse_audio_probe_json(
             Path("song.mp3"),
@@ -154,6 +173,7 @@ class AnalyzeMusicTests(unittest.TestCase):
         self.assertEqual(audio.tags["BPM"], "124")
         self.assertEqual(audio.tags["TBPM"], "124")
         self.assertEqual(audio.tags["initialkey"], "8A")
+        self.assertEqual(audio.metadata_bpm, 124.0)
 
     def test_parse_audio_probe_json_uses_stream_duration_and_bitrate_first(self) -> None:
         audio = parse_audio_probe_json(
@@ -205,8 +225,39 @@ class AnalyzeMusicTests(unittest.TestCase):
         self.assertIn("sample rate: 44100", text)
         self.assertIn("channels: 2", text)
         self.assertIn("bitrate: 192000", text)
+        self.assertIn("metadata bpm: unknown", text)
         self.assertIn("BPM: 124", text)
         self.assertIn("initialkey: 8A", text)
+
+    def test_print_analyze_music_formats_metadata_bpm_and_preview(self) -> None:
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_analyze_music(
+                AudioInfo(
+                    path=Path("song.mp3"),
+                    duration=12.5,
+                    codec="mp3",
+                    sample_rate=44100,
+                    channels=2,
+                    bitrate=None,
+                    tags={"BPM": "120"},
+                    metadata_bpm=120.0,
+                ),
+                build_beat_grid(120, 3, 0.1),
+                120,
+                0.1,
+            )
+
+        text = output.getvalue()
+        self.assertIn("metadata bpm: 120", text)
+        self.assertIn("Beat grid preview:", text)
+        self.assertIn("beat interval: 0.5s", text)
+        self.assertIn("beat count: 3", text)
+        self.assertIn("beat offset: 0.1s", text)
+        self.assertIn("1: 0.1s", text)
+        self.assertIn("2: 0.6s", text)
+        self.assertIn("3: 1.1s", text)
 
 
 class FfmpegBuildTests(unittest.TestCase):

@@ -108,7 +108,12 @@ def print_analyze(
     print(f"  estimated composed duration: {ffmpeg_number(composed_duration)}s")
 
 
-def print_analyze_music(audio: AudioInfo) -> None:
+def print_analyze_music(
+    audio: AudioInfo,
+    beat_grid: list[float] | None = None,
+    preview_bpm: float | None = None,
+    beat_offset: float = 0.0,
+) -> None:
     print("Music:")
     print(f"  path: {audio.path}")
     print(f"  duration: {ffmpeg_number(audio.duration)}s")
@@ -120,6 +125,21 @@ def print_analyze_music(audio: AudioInfo) -> None:
     print(f"  channels: {format_optional_int(audio.channels)}")
     if audio.bitrate is not None:
         print(f"  bitrate: {audio.bitrate} bps")
+    metadata_bpm = (
+        "unknown" if audio.metadata_bpm is None else ffmpeg_number(audio.metadata_bpm)
+    )
+    print(f"  metadata bpm: {metadata_bpm}")
+
+    if beat_grid is not None:
+        assert preview_bpm is not None
+        print("\nBeat grid preview:")
+        print(f"  bpm: {ffmpeg_number(preview_bpm)}")
+        print(f"  beat interval: {ffmpeg_number(60.0 / preview_bpm)}s")
+        print(f"  beat count: {len(beat_grid)}")
+        print(f"  beat offset: {ffmpeg_number(beat_offset)}s")
+        print("  beats:")
+        for index, timestamp in enumerate(beat_grid, start=1):
+            print(f"    {index}: {ffmpeg_number(timestamp)}s")
 
     print("\nMetadata:")
     if not audio.tags:

@@ -14,6 +14,7 @@ from finishvideo.formatting import print_analyze, print_analyze_music, print_dry
 from finishvideo.probe import MusicTrack, probe_duration, probe_media
 from finishvideo.render import build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
+    build_beat_grid,
     compute_output_duration,
     compute_transition_offsets,
 )
@@ -149,8 +150,32 @@ def parse_analyze_music_args(argv: list[str] | None = None) -> argparse.Namespac
         type=Path,
         help="Music/audio file to inspect.",
     )
+    parser.add_argument(
+        "--bpm",
+        type=float,
+        help="Beats per minute used for beat-grid preview.",
+    )
+    parser.add_argument(
+        "--beats",
+        type=int,
+        help="Number of beat timestamps to preview.",
+    )
+    parser.add_argument(
+        "--beat-offset",
+        type=float,
+        default=0.0,
+        help="Beat grid offset in seconds for preview. Default: 0.",
+    )
     args = parser.parse_args(argv)
     args.command = "analyze-music"
+
+    if args.bpm is not None and args.bpm <= 0:
+        parser.error("--bpm must be greater than 0")
+    if args.beats is not None and args.beats <= 0:
+        parser.error("--beats must be greater than 0")
+    if args.beat_offset < 0:
+        parser.error("--beat-offset must be greater than or equal to 0")
+
     return args
 
 
@@ -176,7 +201,18 @@ def run_analyze_music(args: argparse.Namespace) -> int:
     if not args.music.exists():
         raise SystemExit(f"error: input file not found: {args.music}")
 
-    print_analyze_music(probe_audio(args.music))
+    audio = probe_audio(args.music)
+    preview_bpm = args.bpm
+    beat_grid = None
+
+    if args.beats is not None:
+        if preview_bpm is None:
+            preview_bpm = audio.metadata_bpm
+        if preview_bpm is None:
+            raise SystemExit("error: --beats requires --bpm or metadata BPM")
+        beat_grid = build_beat_grid(preview_bpm, args.beats, args.beat_offset)
+
+    print_analyze_music(audio, beat_grid, preview_bpm, args.beat_offset)
     return 0
 
 

@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+
+BPM_TAG_KEYS = {"bpm", "tbpm", "tempo", "initialbpm"}
+BPM_TAG_PATTERN = re.compile(r"\s*(\d+(?:\.\d+)?)\s*(?:bpm)?\s*\Z", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -17,6 +22,7 @@ class AudioInfo:
     channels: int | None
     bitrate: int | None
     tags: dict[str, str]
+    metadata_bpm: float | None = None
 
 
 def parse_optional_int(value: object) -> int | None:
@@ -26,6 +32,38 @@ def parse_optional_int(value: object) -> int | None:
         return int(str(value))
     except ValueError:
         return None
+
+
+def normalize_bpm_tag_value(value: str) -> float | None:
+    match = BPM_TAG_PATTERN.fullmatch(value)
+    if match is None:
+        return None
+
+    try:
+        bpm = float(match.group(1))
+    except ValueError:
+        return None
+
+    if bpm <= 0:
+        return None
+    return bpm
+
+
+def extract_bpm_from_tags(tags: dict[str, str]) -> float | None:
+    bpm_values = set()
+
+    for key, value in tags.items():
+        if key.casefold() not in BPM_TAG_KEYS:
+            continue
+
+        bpm = normalize_bpm_tag_value(value)
+        if bpm is None:
+            return None
+        bpm_values.add(bpm)
+
+    if len(bpm_values) != 1:
+        return None
+    return bpm_values.pop()
 
 
 def parse_audio_probe_json(path: Path, payload: dict) -> AudioInfo:
@@ -63,6 +101,7 @@ def parse_audio_probe_json(path: Path, payload: dict) -> AudioInfo:
         channels=parse_optional_int(audio_stream.get("channels")),
         bitrate=bitrate,
         tags=tags,
+        metadata_bpm=extract_bpm_from_tags(tags),
     )
 
 
