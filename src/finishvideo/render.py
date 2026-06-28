@@ -30,6 +30,24 @@ def build_xfade_filter(
     return ";".join(filter_parts), prev
 
 
+def apply_slowmo_filter(
+    filter_complex: str,
+    final_video: str,
+    factor: float,
+    fps: float,
+) -> tuple[str, str]:
+    if factor == 1.0:
+        return filter_complex, final_video
+
+    slow_video = "[vslow]"
+    slow_filter = (
+        f"{final_video}setpts={ffmpeg_number(factor)}*PTS,"
+        f"minterpolate=fps={ffmpeg_number(fps)}:"
+        f"mi_mode=mci:mc_mode=aobmc:me_mode=bidir{slow_video}"
+    )
+    return f"{filter_complex};{slow_filter}", slow_video
+
+
 def build_ffmpeg_command(
     clips: list[Path],
     output: Path,

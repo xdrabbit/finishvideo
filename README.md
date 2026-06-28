@@ -79,6 +79,18 @@ Lower the music volume:
 ./finishvideo.py --music song.mp3 --music-volume 0.7 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
+Render the final composed video in smooth slow motion:
+
+```sh
+./finishvideo.py --slowmo 2 --slowmo-fps 60 clip1.mp4 clip2.mp4 output_slow.mp4
+```
+
+Render beat-synced video with metadata BPM, music, and slow motion:
+
+```sh
+./finishvideo.py --music song.mp3 --beat-sync --bpm metadata --slowmo 2 --slowmo-fps 60 clip1.mp4 clip2.mp4 output_slow.mp4
+```
+
 Preview the computed durations, offsets, and ffmpeg command without rendering:
 
 ```sh
@@ -126,6 +138,9 @@ Options:
 - `--music`: music/audio file to use as the final output audio track.
 - `--music-volume`: music volume multiplier used with `--music`. Defaults to `1.0`;
   use values such as `0.7` to lower the track.
+- `--slowmo`: slow the final composed video by this factor after transitions.
+  Defaults to `1.0`, which disables slow motion. Values must be `>= 1.0`.
+- `--slowmo-fps`: interpolation frame rate for `--slowmo`. Defaults to `60`.
 - `--video-codec`: ffmpeg video codec. Defaults to `libx264` for Linux and broad compatibility.
 - `--video-bitrate`: ffmpeg video bitrate. Defaults to `8000k`.
 - `--dry-run`: print input clips, durations, transition settings, computed
@@ -153,6 +168,9 @@ Notes:
   automatic beat detection from waveform/audio.
 - When `--music` is provided, the music replaces clip audio in the output. The
   render ends at the composed video duration, not at the music duration.
+- Slow motion uses FFmpeg optical-flow interpolation via `minterpolate`, not
+  AI/RIFE. It is dependency-light and CPU-compatible, but can create artifacts
+  on fast motion.
 
 The legacy Bash version is preserved at `legacy/finishvideo.sh`. The original
 `~/bin/finishvideo` file has not been deleted.
@@ -202,6 +220,12 @@ Preview the metadata BPM render command:
 ./finishvideo.py --dry-run --music /tmp/finishvideo-smoke/music_bpm120.m4a --beat-sync --bpm metadata --beat-offset 0.1 /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output_metadata.mp4
 ```
 
+Preview a slow-motion render command:
+
+```sh
+./finishvideo.py --dry-run --slowmo 2 --slowmo-fps 60 /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/output_slow.mp4
+```
+
 Render a tiny output:
 
 ```sh
@@ -212,6 +236,12 @@ Render a tiny metadata BPM output:
 
 ```sh
 ./finishvideo.py --music /tmp/finishvideo-smoke/music_bpm120.m4a --beat-sync --bpm metadata --beat-offset 0.1 /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/clip3.mp4 /tmp/finishvideo-smoke/output_metadata.mp4
+```
+
+Render a tiny slow-motion output:
+
+```sh
+./finishvideo.py --slowmo 2 --slowmo-fps 60 /tmp/finishvideo-smoke/clip1.mp4 /tmp/finishvideo-smoke/clip2.mp4 /tmp/finishvideo-smoke/output_slow.mp4
 ```
 
 Run unit tests:

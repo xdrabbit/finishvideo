@@ -20,7 +20,7 @@ from finishvideo.formatting import (
 )
 from finishvideo.plan import build_render_plan, resolve_bpm
 from finishvideo.probe import ClipInfo, parse_fps, parse_probe_json
-from finishvideo.render import build_ffmpeg_command, build_xfade_filter
+from finishvideo.render import apply_slowmo_filter, build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
     TransitionOffset,
     build_beat_grid,
@@ -135,12 +135,60 @@ class RenderBpmTests(unittest.TestCase):
                 "metadata",
                 0.0,
                 1.0,
+                1.0,
+                60.0,
                 3.5,
                 ["ffmpeg", "-i", "clip1.mp4", "out.mp4"],
             )
 
         self.assertIn("bpm: 120", output.getvalue())
         self.assertIn("bpm source: metadata", output.getvalue())
+
+
+class SlowmoParserTests(unittest.TestCase):
+    def test_slowmo_options_parse(self) -> None:
+        args = parse_args(
+            [
+                "--slowmo",
+                "2",
+                "--slowmo-fps",
+                "60",
+                "clip1.mp4",
+                "clip2.mp4",
+                "out.mp4",
+            ]
+        )
+
+        self.assertEqual(args.slowmo, 2.0)
+        self.assertEqual(args.slowmo_fps, 60.0)
+
+    def test_slowmo_rejects_less_than_one(self) -> None:
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as error:
+            parse_args(["--slowmo", "0.5", "clip1.mp4", "clip2.mp4", "out.mp4"])
+
+        self.assertNotEqual(error.exception.code, 0)
+        self.assertIn("--slowmo must be greater than or equal to 1.0", stderr.getvalue())
+
+    def test_slowmo_fps_rejects_zero_or_negative(self) -> None:
+        for fps in ("0", "-1"):
+            with self.subTest(fps=fps):
+                stderr = io.StringIO()
+
+                with redirect_stderr(stderr), self.assertRaises(SystemExit) as error:
+                    parse_args(
+                        [
+                            "--slowmo-fps",
+                            fps,
+                            "clip1.mp4",
+                            "clip2.mp4",
+                            "out.mp4",
+                        ]
+                    )
+
+                self.assertNotEqual(error.exception.code, 0)
+                self.assertIn("--slowmo-fps must be greater than 0", stderr.getvalue())
 
 
 class OffsetTests(unittest.TestCase):
@@ -379,6 +427,27 @@ class FfmpegBuildTests(unittest.TestCase):
             "[v1][2:v]xfade=transition=wipeleft:duration=0.5:offset=17[v2]",
         )
 
+    def test_apply_slowmo_filter_appends_interpolation_stage(self) -> None:
+        filter_complex, final_video = apply_slowmo_filter(
+            "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]",
+            "[v1]",
+            2.0,
+            60.0,
+        )
+
+        self.assertEqual(final_video, "[vslow]")
+        self.assertIn("[v1]setpts=2*PTS", filter_complex)
+        self.assertIn("minterpolate=fps=60", filter_complex)
+        self.assertTrue(filter_complex.endswith("me_mode=bidir[vslow]"))
+
+    def test_apply_slowmo_filter_leaves_normal_speed_unchanged(self) -> None:
+        original = "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]"
+
+        filter_complex, final_video = apply_slowmo_filter(original, "[v1]", 1.0, 60.0)
+
+        self.assertEqual(filter_complex, original)
+        self.assertEqual(final_video, "[v1]")
+
     def test_build_ffmpeg_command(self) -> None:
         command = build_ffmpeg_command(
             [Path("clip1.mp4"), Path("clip2.mp4")],
@@ -455,6 +524,8 @@ class RenderPlanTests(unittest.TestCase):
             video_codec="libx264",
             video_bitrate="8000k",
             music_volume=1.0,
+            slowmo=1.0,
+            slowmo_fps=60.0,
         )
 
         durations = {Path("clip1.mp4"): 2.0, Path("clip2.mp4"): 2.0}
@@ -473,7 +544,43 @@ class RenderPlanTests(unittest.TestCase):
         self.assertEqual(plan.bpm_source, "manual")
         self.assertEqual(plan.output_duration, 3.5)
         self.assertEqual(plan.final_video, "[v1]")
+        self.assertEqual(
+            plan.filter_complex,
+            "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=1.5[v1]",
+        )
+        command_filter = plan.command[plan.command.index("-filter_complex") + 1]
+        self.assertEqual(command_filter, plan.filter_complex)
+        self.assertNotIn("minterpolate", command_filter)
+        self.assertEqual(plan.command[plan.command.index("-map") + 1], "[v1]")
         self.assertEqual(plan.command[-1], "out.mp4")
+
+    def test_build_render_plan_multiplies_duration_for_slowmo(self) -> None:
+        args = Namespace(
+            music=None,
+            beat_sync=False,
+            bpm=None,
+            duration=0.5,
+            transition="fade",
+            beat_offset=0.0,
+            video_codec="libx264",
+            video_bitrate="8000k",
+            music_volume=1.0,
+            slowmo=2.0,
+            slowmo_fps=60.0,
+        )
+
+        durations = {Path("clip1.mp4"): 2.0, Path("clip2.mp4"): 2.0}
+
+        with patch("finishvideo.plan.probe_duration", side_effect=durations.__getitem__):
+            plan = build_render_plan(
+                args,
+                [Path("clip1.mp4"), Path("clip2.mp4")],
+                Path("out.mp4"),
+            )
+
+        self.assertEqual(plan.output_duration, 7.0)
+        self.assertEqual(plan.final_video, "[vslow]")
+        self.assertIn("setpts=2*PTS", plan.filter_complex)
 
 
 if __name__ == "__main__":

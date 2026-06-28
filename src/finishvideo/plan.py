@@ -8,7 +8,7 @@ from pathlib import Path
 
 from finishvideo.audio import AudioInfo, probe_audio
 from finishvideo.probe import MusicTrack, probe_duration
-from finishvideo.render import build_ffmpeg_command, build_xfade_filter
+from finishvideo.render import apply_slowmo_filter, build_ffmpeg_command, build_xfade_filter
 from finishvideo.timeline import (
     TransitionOffset,
     compute_output_duration,
@@ -38,6 +38,8 @@ class RenderPlan:
     bpm_source: str | None
     beat_offset: float
     music_volume: float
+    slowmo_factor: float
+    slowmo_fps: float
     video_codec: str
     video_bitrate: str
     output_duration: float
@@ -98,7 +100,15 @@ def build_render_plan(
         args.transition,
         args.duration,
     )
+    filter_complex, final_video = apply_slowmo_filter(
+        filter_complex,
+        final_video,
+        args.slowmo,
+        args.slowmo_fps,
+    )
     output_duration = compute_output_duration(durations, transition_offsets)
+    if args.slowmo > 1.0:
+        output_duration *= args.slowmo
     command = build_ffmpeg_command(
         clips,
         output,
@@ -124,6 +134,8 @@ def build_render_plan(
         bpm_source=bpm_resolution.source,
         beat_offset=args.beat_offset,
         music_volume=args.music_volume,
+        slowmo_factor=args.slowmo,
+        slowmo_fps=args.slowmo_fps,
         video_codec=args.video_codec,
         video_bitrate=args.video_bitrate,
         output_duration=output_duration,

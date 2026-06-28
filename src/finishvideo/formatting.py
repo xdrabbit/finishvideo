@@ -34,6 +34,8 @@ def print_dry_run(
     bpm_source: str | None,
     beat_offset: float,
     music_volume: float,
+    slowmo_factor: float,
+    slowmo_fps: float,
     output_duration: float,
     command: list[str],
 ) -> None:
@@ -64,6 +66,14 @@ def print_dry_run(
         print(f"  bpm source: {bpm_source}")
     print(f"  beat offset: {ffmpeg_number(beat_offset)}s")
     print(f"  output duration: {ffmpeg_number(output_duration)}s")
+
+    print("\nSlow motion:")
+    if slowmo_factor > 1.0:
+        print("  slow motion: on")
+        print(f"  slowmo factor: {ffmpeg_number(slowmo_factor)}")
+        print(f"  slowmo fps: {ffmpeg_number(slowmo_fps)}")
+    else:
+        print("  slow motion: off")
 
     print("\nTransition offsets before beat sync:")
     for item in transition_offsets:

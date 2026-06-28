@@ -69,6 +69,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Music volume multiplier used with --music. Default: 1.0",
     )
     parser.add_argument(
+        "--slowmo",
+        type=float,
+        default=1.0,
+        help="Slow final composed video by this factor. Must be >= 1.0. Default: 1.0",
+    )
+    parser.add_argument(
+        "--slowmo-fps",
+        type=float,
+        default=60.0,
+        help="Interpolation frame rate used with --slowmo. Default: 60",
+    )
+    parser.add_argument(
         "--video-codec",
         default="libx264",
         help="ffmpeg video codec. Default: libx264",
@@ -116,6 +128,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--beat-offset must be greater than or equal to 0")
     if args.music_volume < 0:
         parser.error("--music-volume must be greater than or equal to 0")
+    if args.slowmo < 1.0:
+        parser.error("--slowmo must be greater than or equal to 1.0")
+    if args.slowmo_fps <= 0:
+        parser.error("--slowmo-fps must be greater than 0")
 
     return args
 
@@ -256,6 +272,8 @@ def run() -> int:
             plan.bpm_source,
             plan.beat_offset,
             plan.music_volume,
+            plan.slowmo_factor,
+            plan.slowmo_fps,
             plan.output_duration,
             plan.command,
         )
