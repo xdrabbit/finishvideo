@@ -10,6 +10,7 @@ from finishvideo.cli import (
     TransitionOffset,
     build_ffmpeg_command,
     build_xfade_filter,
+    compute_output_duration,
     compute_transition_offsets,
     ffmpeg_number,
     rounded_to_beat,
@@ -58,6 +59,11 @@ class OffsetTests(unittest.TestCase):
 
         self.assertEqual(offsets[0].before_beat_sync, 9.5)
         self.assertEqual(offsets[0].after_beat_sync, 9.25)
+
+    def test_compute_output_duration_uses_final_offset(self) -> None:
+        offsets = compute_transition_offsets([10.0, 8.0, 6.0], 0.5, False, None)
+
+        self.assertEqual(compute_output_duration([10.0, 8.0, 6.0], offsets), 23.0)
 
 
 class FfmpegBuildTests(unittest.TestCase):
@@ -112,30 +118,34 @@ class FfmpegBuildTests(unittest.TestCase):
             "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]",
             "[v1]",
             music=Path("song.mp3"),
+            music_volume=0.7,
+            output_duration=17.5,
         )
+        filter_complex = command[command.index("-filter_complex") + 1]
 
         self.assertIn("song.mp3", command)
         self.assertIn("-map", command)
-        self.assertIn("2:a:0", command)
+        self.assertIn("[a_music]", command)
+        self.assertIn("[2:a]volume=0.7[a_music]", filter_complex)
         self.assertIn("-c:a", command)
         self.assertIn("aac", command)
-        self.assertIn("-shortest", command)
+        self.assertIn("-b:a", command)
+        self.assertIn("192k", command)
+        self.assertIn("-t", command)
+        self.assertIn("17.5", command)
+        self.assertNotIn("-shortest", command)
         self.assertNotIn("-an", command)
 
-    def test_build_ffmpeg_command_with_music_mix(self) -> None:
+    def test_build_ffmpeg_command_without_music_keeps_video_only_output(self) -> None:
         command = build_ffmpeg_command(
             [Path("clip1.mp4"), Path("clip2.mp4")],
             Path("output.mp4"),
             "[0:v][1:v]xfade=transition=fade:duration=0.5:offset=9.5[v1]",
             "[v1]",
-            music=Path("song.mp3"),
-            music_audio="mix",
         )
-        filter_complex = command[command.index("-filter_complex") + 1]
 
-        self.assertIn("[0:a][1:a]concat=n=2:v=0:a=1[a_clips]", filter_complex)
-        self.assertIn("[a_clips][2:a]amix=inputs=2", filter_complex)
-        self.assertIn("[aout]", command)
+        self.assertIn("-an", command)
+        self.assertNotIn("-c:a", command)
 
 
 if __name__ == "__main__":

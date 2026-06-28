@@ -67,10 +67,10 @@ Use a music track as the final output audio:
 ./finishvideo.py --music song.mp3 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
-Mix a music track with the original clip audio:
+Lower the music volume:
 
 ```sh
-./finishvideo.py --music song.mp3 --music-audio mix clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
+./finishvideo.py --music song.mp3 --music-volume 0.7 clip1.mp4 clip2.mp4 clip3.mp4 output.mp4
 ```
 
 Preview the computed durations, offsets, and ffmpeg command without rendering:
@@ -92,10 +92,9 @@ Options:
 - `--beat-sync`: round each transition offset to the nearest beat.
 - `--bpm`: beats per minute for `--beat-sync`.
 - `--beat-offset`: beat grid offset in seconds for `--beat-sync`. Defaults to `0`.
-- `--music`: music/audio file to use for final output audio.
-- `--music-audio`: how to combine `--music` with output audio. `replace` maps
-  only the music track, while `mix` combines the music with concatenated clip
-  audio. Defaults to `replace`.
+- `--music`: music/audio file to use as the final output audio track.
+- `--music-volume`: music volume multiplier used with `--music`. Defaults to `1.0`;
+  use values such as `0.7` to lower the track.
 - `--video-codec`: ffmpeg video codec. Defaults to `libx264` for Linux and broad compatibility.
 - `--video-bitrate`: ffmpeg video bitrate. Defaults to `8000k`.
 - `--dry-run`: print input clips, durations, transition settings, computed
@@ -103,10 +102,11 @@ Options:
 
 Notes:
 
-- Beat sync uses the explicit `--bpm` value and optional `--beat-offset`; it does
-  not perform automatic audio beat detection yet.
-- `--music-audio mix` expects every input clip to have an audio stream. Use the
-  default `--music-audio replace` for music-only output audio.
+- Beat sync currently snaps transition offsets to a manual BPM grid starting at
+  time zero, plus optional `--beat-offset`; it does not perform automatic audio
+  beat detection yet.
+- When `--music` is provided, the music replaces clip audio in the output. The
+  render ends at the composed video duration, not at the music duration.
 
 The legacy Bash version is preserved at `legacy/finishvideo.sh`. The original
 `~/bin/finishvideo` file has not been deleted.
